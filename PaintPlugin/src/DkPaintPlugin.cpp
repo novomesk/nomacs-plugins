@@ -119,14 +119,15 @@ QLineF getShorterLine(QPainterPath line, const int thickness) {
 
 // blur selected rectangle region
 void getBlur(QPainterPath rect, QPainter *painter, QImage &img, int radius){
-	//auto pixelRatio = pixmap.devicePixelRatio();
+    qreal deviceScale = painter->device()->devicePixelRatioF();
+
 	QRectF selection = rect.boundingRect();
 	QRect selectionScaled = QRect(selection.topLeft().toPoint(), selection.bottomRight().toPoint());
 
 	QGraphicsBlurEffect *blur = new QGraphicsBlurEffect;
     blur->setBlurRadius(radius);
-    QGraphicsPixmapItem *item = new QGraphicsPixmapItem (
-                QPixmap::fromImage(img).copy(selectionScaled));
+    QGraphicsPixmapItem *item = new QGraphicsPixmapItem(
+        QPixmap::fromImage(img.scaled(img.size() / deviceScale)).copy(selectionScaled));
     item->setGraphicsEffect(blur);
 
     QGraphicsScene scene;
@@ -448,10 +449,9 @@ void DkPaintViewPort::paintEvent(QPaintEvent *event) {
 			//painter.drawPoint(paths.at(idx).boundingRect().bottomRight());
 		}
 		else if(pathsMode.at(idx) == mode_blur){
-			if(parent()){
+            if(parent() && !paths.at(idx).boundingRect().isEmpty()){
 				nmc::DkBaseViewPort* viewport = dynamic_cast<nmc::DkBaseViewPort*>(parent());
 				QImage img = viewport->getImage();
-				//QPixmap pixmap = QPixmap::fromImage(mImg).copy();
 				getBlur(paths.at(idx), &painter, img, pathsPen.at(idx).width());
 			}
 		}

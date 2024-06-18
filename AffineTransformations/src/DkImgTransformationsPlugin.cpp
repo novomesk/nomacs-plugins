@@ -268,7 +268,7 @@ void DkImgTransformationsViewPort::mouseMoveEvent(QMouseEvent *event) {
 				setCursor(intrRect->getCursorShape(intrIdx));
 
 				QSize initSize = intrRect->getInitialSize();
-				QPointF initPoint = intrRect->getInitialPoint(intrIdx);
+                QPointF initPoint = intrRect->getInitialPoint(intrIdx) / this->devicePixelRatioF();
 				int sign = 1;
 
 				if (intrIdx < 6) {
@@ -382,22 +382,21 @@ void DkImgTransformationsViewPort::paintEvent(QPaintEvent *event) {
 
 	painter.fillRect(this->rect(), nmc::DkSettingsManager::param().display().bgColor);
 
-	// This is true 16:9 code (sorry : )
+    const qreal deviceScale = this->devicePixelRatioF();
+    affineTransform.scale(1.0 / deviceScale, 1.0 / deviceScale);
+
+    // This is true 16:9 code (sorry : )
 	if (mWorldMatrix)
 		painter.setWorldTransform((*mImgMatrix) * (*mWorldMatrix));
 
 	if (selectedMode == mode_scale) {
 		painter.save();
 
-		imgRectT.setSize(QSizeF(imgRectT.width()*scaleValues.x(),imgRectT.height()*scaleValues.y()).toSize());
-		imgRectT.translate(
-			QPointF(
-			imgRectT.width()*0.5 *(1-scaleValues.x()) * (1/scaleValues.x()),
-			imgRectT.height()*0.5*(1-scaleValues.y())*(1/scaleValues.y())).toPoint());
-
 		affineTransform.scale(scaleValues.x(),scaleValues.y());
 		affineTransform.translate(inImage.width()*0.5 *(1-scaleValues.x()) * (1/scaleValues.x()),inImage.height()*0.5*(1-scaleValues.y())*(1/scaleValues.y()));
-	}
+
+        imgRectT = affineTransform.mapRect(inImage.rect());
+    }
 	else if (selectedMode == mode_rotate) {
 		painter.save();
 
@@ -417,11 +416,13 @@ void DkImgTransformationsViewPort::paintEvent(QPaintEvent *event) {
 		int signX = (shearValues.x() < 0) ? -1 : 1;
 		int signY = (shearValues.y() < 0) ? -1 : 1;
 
-		affineTransform.reset();
-		affineTransform.translate(signX*(inImage.width()/2-transfRect.width()/2), signY*(inImage.height()/2-transfRect.height()/2));
-		affineTransform.shear(shearValues.x(),shearValues.y());
+        affineTransform.reset();
+        affineTransform.scale(1.0 / deviceScale, 1.0 / deviceScale);
+        affineTransform.translate(signX * (inImage.width() / 2 - transfRect.width() * deviceScale / 2),
+                                  signY * (inImage.height() / 2 - transfRect.height() * deviceScale / 2));
+        affineTransform.shear(shearValues.x(), shearValues.y());
 
-		painter.fillRect(affineTransform.mapRect(inImage.rect()), Qt::white);
+        painter.fillRect(affineTransform.mapRect(inImage.rect()), Qt::white);
 	}
 	
 	affineTransform *= painter.transform();
@@ -455,25 +456,33 @@ void DkImgTransformationsViewPort::paintEvent(QPaintEvent *event) {
 			}
 		}
 
-		painter.restore();
+        painter.restore();
 		if (rotCropEnabled) {
+            double r = rotationValue * PI / 180; // qt uses radians
+            double s = qAbs(qSin(r));
+            double c = qAbs(qCos(r));
+            double t = qAbs(qTan(r));
+            double inHeight = inImage.height() / deviceScale;
+            double inWidth = inImage.width() / deviceScale;
+            QPoint center = QPoint(inWidth / 2, inHeight / 2);
+            double diagonal = qSqrt(inHeight * inHeight + inWidth * inWidth);
 
-			double newHeight = - ((double)(inImage.height()) - (double) (inImage.width()) * qAbs(qTan(rotationValue * PI /180))) / (qAbs(qTan(rotationValue * PI /180))*qAbs(qSin(rotationValue * PI /180))-qAbs(qCos(rotationValue * PI /180)));
-			QSize cropSize = QSize(qRound(((double) (inImage.width())-newHeight*qAbs(qSin(rotationValue * PI /180)))/qAbs(qCos(rotationValue * PI /180))) , qRound(newHeight));
-			QRect cropRect = QRect(QPointF(rotationCenter.x()-0.5*cropSize.width(),rotationCenter.y()-0.5*cropSize.height()).toPoint(),cropSize);
-		
-			if (cropSize.width() <= qSqrt(inImage.height()*inImage.height()+inImage.width()*inImage.width()) && cropSize.height() <= qSqrt(inImage.height()*inImage.height()+inImage.width()*inImage.width())) {
-				
-				QBrush cropBrush = QBrush(QColor(128, 128, 128, 200));
-				painter.fillRect(imgRectT.left(), imgRectT.top(), imgRectT.width(), -imgRectT.top()+cropRect.top(), cropBrush);
-				painter.fillRect(imgRectT.left(), cropRect.bottom()+1, imgRectT.width(), -cropRect.bottom()+imgRectT.bottom(), cropBrush);
-				painter.fillRect(imgRectT.left(), cropRect.top(), cropRect.left()-imgRectT.left(), cropRect.height(), cropBrush);
-				painter.fillRect(cropRect.right()+1, cropRect.top(), -cropRect.right()+imgRectT.right(), cropRect.height(), cropBrush);
+            double newHeight = -(inHeight - inWidth * t) / (t * s - c);
+            QSize cropSize = QSize(qRound((inWidth - newHeight * s) / c), qRound(newHeight));
+            QRect cropRect = QRect(QPointF(center.x() - 0.5 * cropSize.width(),
+                                           center.y() - 0.5 * cropSize.height()).toPoint(),
+                                   cropSize);
 
-				painter.drawRect(cropRect);
+            if (cropSize.width() <= diagonal && cropSize.height() <= diagonal) {
+                QBrush cropBrush = QBrush(QColor(128, 128, 128, 200));
+                painter.fillRect(imgRectT.left(), imgRectT.top(), imgRectT.width(), -imgRectT.top()+cropRect.top(), cropBrush);
+                painter.fillRect(imgRectT.left(), cropRect.bottom()+1, imgRectT.width(), -cropRect.bottom()+imgRectT.bottom(), cropBrush);
+                painter.fillRect(imgRectT.left(), cropRect.top(), cropRect.left()-imgRectT.left(), cropRect.height(), cropBrush);
+                painter.fillRect(cropRect.right()+1, cropRect.top(), -cropRect.right()+imgRectT.right(), cropRect.height(), cropBrush);
 
-			}
-		}
+                painter.drawRect(cropRect);
+            }
+        }
 	}
 	
 
