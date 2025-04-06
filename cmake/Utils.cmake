@@ -1,5 +1,4 @@
 macro(NMC_POLICY)
-	
 endmacro(NMC_POLICY)
 
 # Searches for Qt with the required components
@@ -143,7 +142,10 @@ macro(NMC_CREATE_TARGETS)
 
 	elseif(UNIX)
 		set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${NOMACS_BUILD_DIRECTORY}/plugins)
-        install(TARGETS ${PROJECT_NAME} RUNTIME LIBRARY DESTINATION lib${LIB_SUFFIX}/nomacs-plugins)
+		# disable on macosx, we copy them into the bundle automatically (no make install needed)
+		if (NOT APPLE)
+			install(TARGETS ${PROJECT_NAME} RUNTIME LIBRARY DESTINATION lib${LIB_SUFFIX}/nomacs-plugins)
+		endif()
 		set_property(TARGET ${PROJECT_NAME} PROPERTY VERSION ${NOMACS_VERSION_MAJOR}.${NOMACS_VERSION_MINOR}.${NOMACS_VERSION_PATCH})
 		set_property(TARGET ${PROJECT_NAME} PROPERTY SOVERSION ${NOMACS_VERSION_MAJOR})
 	endif(MSVC)
